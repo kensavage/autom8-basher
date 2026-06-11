@@ -469,6 +469,40 @@ function terrainH(x, z) {
 }
 
 /* ============================================================
+   WORLD COLLIDERS — trees & rocks are solid obstacles for the player.
+   Circle colliders in a coarse spatial grid; resolved by push-out.
+============================================================ */
+const colliders = [];
+const collGrid = new Map();
+const collCell = (x, z) => (Math.floor((x + 300) / 8)) * 4096 + Math.floor((z + 300) / 8);
+function addCollider(x, z, r) {
+  const c = { x, z, r };
+  colliders.push(c);
+  const key = collCell(x, z);
+  if (!collGrid.has(key)) collGrid.set(key, []);
+  collGrid.get(key).push(c);
+}
+function resolveWorldCollisions() {
+  const pr = 0.55; // player body radius
+  const gx0 = Math.floor((P.pos.x + 300) / 8), gz0 = Math.floor((P.pos.z + 300) / 8);
+  for (let gx = gx0 - 1; gx <= gx0 + 1; gx++) {
+    for (let gz = gz0 - 1; gz <= gz0 + 1; gz++) {
+      const cell = collGrid.get(gx * 4096 + gz);
+      if (!cell) continue;
+      for (const c of cell) {
+        const dx = P.pos.x - c.x, dz = P.pos.z - c.z;
+        const min = pr + c.r, d2 = dx*dx + dz*dz;
+        if (d2 < min*min && d2 > 1e-6) {
+          const d = Math.sqrt(d2), push = (min - d) / d;
+          P.pos.x += dx * push;
+          P.pos.z += dz * push;
+        }
+      }
+    }
+  }
+}
+
+/* ============================================================
    WORLD BUILD — everything instanced so the big world stays fast
 ============================================================ */
 
@@ -598,6 +632,7 @@ function terrainH(x, z) {
     nTrunk++;
     const gy = terrainH(x, z), s = 0.8 + Math.random()*1.5;
     trunkItems.push({ x, y: gy, z, ry: Math.random()*6.3, sx: s });
+    addCollider(x, z, 0.45 * s + 0.2); // trunk is solid
     const nBlobs = 2 + Math.floor(Math.random()*2);
     for (let b = 0; b < nBlobs; b++) {
       const bs = (0.8 + Math.random()*0.5 - b*0.12) * s;
@@ -619,11 +654,14 @@ function terrainH(x, z) {
     const x = (Math.random()*2-1)*(WORLD+18), z = (Math.random()*2-1)*(WORLD+18);
     if (Math.hypot(x, z) < 14) continue;
     nRock++;
+    const rsx = 0.6+Math.random()*1.7, rsz = 0.6+Math.random()*1.7;
     rockItems.push({
       x, y: terrainH(x, z) + 0.25, z,
       rx: Math.random(), ry: Math.random(), rz: Math.random(),
-      sx: 0.6+Math.random()*1.7, sy: 0.5+Math.random()*1.1, sz: 0.6+Math.random()*1.7,
+      sx: rsx, sy: 0.5+Math.random()*1.1, sz: rsz,
     });
+    const rr = 0.72 * Math.max(rsx, rsz);
+    if (rr > 0.55) addCollider(x, z, rr); // pebbles stay walkable, boulders are solid
   }
   scatterRegional(rockGeo, new THREE.MeshStandardMaterial({ color: 0x8a8aa0, roughness: 0.9, flatShading: true }), rockItems, { shadows: true });
 
@@ -668,6 +706,19 @@ cloudMat.fog = false;
 const clouds = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(3, 0), cloudMat, cloudCount);
 const _cm4 = new THREE.Matrix4(), _cq = new THREE.Quaternion(), _ce = new THREE.Euler(), _cv = new THREE.Vector3(), _cs = new THREE.Vector3();
 scene.add(clouds);
+
+/* ---------- soft boundary: translucent energy walls at the world edge ---------- */
+{
+  const wallMat = new THREE.MeshBasicMaterial({ color: 0x55ccff, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false });
+  wallMat.fog = false; // visible from across the map, like a distant storm wall
+  const wallGeo = new THREE.PlaneGeometry(WORLD*2 + 80, 26);
+  for (const [x, z, ry] of [[0, -WORLD, 0], [0, WORLD, 0], [-WORLD, 0, Math.PI/2], [WORLD, 0, Math.PI/2]]) {
+    const w = new THREE.Mesh(wallGeo, wallMat);
+    w.position.set(x, 13, z);
+    w.rotation.y = ry;
+    scene.add(w);
+  }
+}
 
 /* ---------- fireflies / drifting motes ---------- */
 const moteCount = 90;
@@ -772,13 +823,13 @@ function makePlayerMesh(ch) {
   // hammer held in right hand
   const hammer = rig.hammer = new THREE.Group();
   const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.062, 1.15, 7), mat(0x8a5a2b));
-  const hhead = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.3, 0.3), new THREE.MeshStandardMaterial({ color: 0x9aa4ba, roughness: 0.4, metalness: 0.5, flatShading: true }));
+  const hhead = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.34, 0.38), new THREE.MeshStandardMaterial({ color: 0x9aa4ba, roughness: 0.4, metalness: 0.5, flatShading: true }));
   hhead.position.y = 0.56;
-  const hband = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.09, 0.32), new THREE.MeshStandardMaterial({ color: 0xffd23e, emissive: 0xcf8a00, emissiveIntensity: 0.7 }));
+  const hband = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.1, 0.4), new THREE.MeshStandardMaterial({ color: 0xffd23e, emissive: 0xcf8a00, emissiveIntensity: 0.7 }));
   hband.position.y = 0.56;
   hammer.add(handle, hhead, hband);
   hammer.position.set(0, -0.5, 0.12);
-  hammer.rotation.x = -1.35;
+  hammer.rotation.x = 1.35; // head leads FORWARD over the shoulder, so swings read as real slams
   rig.armR.add(hammer);
 
   // cape — flutters with speed, colored to match the headband
@@ -1562,6 +1613,11 @@ function fireWeapons(dt) {
       breakPotsNear(P.pos.x, P.pos.z, s.r, P.pos.y);
       if (hitAny || enemies.length) {
         P.attackT = 0.32;
+        // square up to the nearest cube when slamming from a standstill
+        if (!P.movingNow) {
+          const tgt = nearestEnemy(12);
+          if (tgt) P.mesh.rotation.y = Math.atan2(tgt.mesh.position.x - P.pos.x, tgt.mesh.position.z - P.pos.z);
+        }
         const ring = new THREE.Mesh(ringGeo, ringMat.clone());
         ring.rotation.x = -Math.PI/2; ring.position.set(P.pos.x, P.pos.y + 0.15, P.pos.z);
         scene.add(ring);
@@ -1900,15 +1956,29 @@ addEventListener('keyup', e => keys[e.code] = false);
 /* ---------- mouse camera: drag to orbit, scroll to zoom ---------- */
 let camYaw = 0, camPitch = 0.66, camDist = 17.2;
 let dragging = false, lastMX = 0, lastMY = 0;
-addEventListener('mousedown', e => { dragging = true; lastMX = e.clientX; lastMY = e.clientY; });
+addEventListener('mousedown', e => {
+  dragging = true; lastMX = e.clientX; lastMY = e.clientY;
+  // pointer lock during in-game drags: relative mouse motion means the camera keeps
+  // rotating forever — no more hitting the edge of the monitor
+  if (G.state === 'play' && e.target === renderer.domElement) {
+    try { renderer.domElement.requestPointerLock?.(); } catch (err) {}
+  }
+});
 addEventListener('mousemove', e => {
   if (!dragging) return;
-  camYaw   -= (e.clientX - lastMX) * 0.0055;
-  camPitch  = THREE.MathUtils.clamp(camPitch + (e.clientY - lastMY) * 0.0042, 0.32, 1.25);
+  const locked = document.pointerLockElement === renderer.domElement;
+  const dx = locked ? e.movementX : e.clientX - lastMX;
+  const dy = locked ? e.movementY : e.clientY - lastMY;
+  camYaw   -= dx * 0.0055;
+  camPitch  = THREE.MathUtils.clamp(camPitch + dy * 0.0042, 0.32, 1.25);
   lastMX = e.clientX; lastMY = e.clientY;
 });
-addEventListener('mouseup', () => dragging = false);
-addEventListener('blur', () => dragging = false);
+const endDrag = () => {
+  dragging = false;
+  if (document.pointerLockElement) { try { document.exitPointerLock(); } catch (err) {} }
+};
+addEventListener('mouseup', endDrag);
+addEventListener('blur', endDrag);
 addEventListener('wheel', e => { camDist = THREE.MathUtils.clamp(camDist + e.deltaY * 0.02, 9.5, 24); }, { passive: true });
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -2133,7 +2203,7 @@ function resetGame() {
   P.dmgMult = 1 + mu.dmg * 0.05; P.cdMult = 1; P.magnet = 3.5 * (1 + mu.magnet * 0.08);
   P.armor = 0; P.regen = mu.regen * 0.15; P.crit = 0.05; P.speedMult = 1 + mu.speed * 0.03;
   P.staminaMax = 100 + mu.stamina * 12; P.stamina = P.staminaMax; P.staminaRegen = 18;
-  P.sprintMult = 1.65; P.winded = false; P.sprinting = false; P.dustT = 0;
+  P.sprintMult = 1.65; P.winded = false; P.sprinting = false; P.dustT = 0; P.oobT = 0;
   P.weapons = {}; P.weapons[ch.weapon] = 1; P.passives = {};
   for (const id in WEAPONS) WEAPONS[id].timer = 0;
   syncOrbs();
@@ -2277,7 +2347,7 @@ document.getElementById('resetSave').onclick = () => {
 refreshMenuCoins();
 
 // console handle for tinkering: BB.gainXP(50), BB.spawnEnemy('boss'), ...
-window.BB = { G, P, save, META, gainXP, spawnEnemy, composer, renderer, terrainH, pots, breakPotsNear, spawnPot, persistSave, Music, syncOrbs, tick: (now) => tick(now) };
+window.BB = { G, P, save, META, gainXP, spawnEnemy, composer, renderer, terrainH, pots, breakPotsNear, spawnPot, persistSave, Music, syncOrbs, colliders, tick: (now) => tick(now) };
 
 /* ============================================================
    MAIN LOOP
@@ -2335,6 +2405,7 @@ function tick(now) {
     if (keys.KeyA || keys.ArrowLeft) mx -= 1;
     if (keys.KeyD || keys.ArrowRight) mx += 1;
     const moving = !!(mx || mz);
+    P.movingNow = moving;
 
     // sprint: hold SHIFT for a burst of speed, gated by stamina
     const wantSprint = (keys.ShiftLeft || keys.ShiftRight) && moving;
@@ -2346,7 +2417,9 @@ function tick(now) {
       if (P.onGround && P.dustT <= 0) { P.dustT = 0.13; burst(P.pos, 0xcfc4a8, 1, 2.2, 1.6); }
     } else {
       P.stamina = Math.min(P.staminaMax, P.stamina + P.staminaRegen * dt);
-      if (P.winded && P.stamina > P.staminaMax * 0.35) P.winded = false;
+      // run the tank dry and you're locked out until it refills COMPLETELY —
+      // ease off shift early if you want sprint on tap
+      if (P.winded && P.stamina >= P.staminaMax) P.winded = false;
     }
 
     if (moving) {
@@ -2363,13 +2436,15 @@ function tick(now) {
         const th = terrainH(nx2, nz2);
         return P.onGround ? (th - P.pos.y) < step * 1.2 : th <= P.pos.y + 0.55;
       };
-      const nx = THREE.MathUtils.clamp(P.pos.x + wx * step, -WORLD, WORLD);
+      // the boundary is soft: you CAN cross the wall (±WORLD), but only so far
+      const nx = THREE.MathUtils.clamp(P.pos.x + wx * step, -WORLD - 40, WORLD + 40);
       if (canPass(nx, P.pos.z)) P.pos.x = nx;
-      const nz = THREE.MathUtils.clamp(P.pos.z + wz * step, -WORLD, WORLD);
+      const nz = THREE.MathUtils.clamp(P.pos.z + wz * step, -WORLD - 40, WORLD + 40);
       if (canPass(P.pos.x, nz)) P.pos.z = nz;
       P.facing.set(wx, 0, wz);
       P.mesh.rotation.y = Math.atan2(wx, wz);
     }
+    resolveWorldCollisions(); // trees and boulders are solid
 
     // ground following, ledges, jumping
     const gh = terrainH(P.pos.x, P.pos.z);
@@ -2396,9 +2471,17 @@ function tick(now) {
     // regen
     if (P.regen > 0) P.hp = Math.min(P.maxhp, P.hp + P.regen * dt);
 
+    // out of bounds: health melts ~10% of max per second until you return
+    if (Math.max(Math.abs(P.pos.x), Math.abs(P.pos.z)) > WORLD) {
+      P.oobT = (P.oobT || 0) + dt;
+      P.hp -= P.maxhp * 0.10 * dt;
+      G.hurtUntil = G.t + 0.2; // keep the red vignette burning
+      if (P.oobT % 0.9 < dt) { showDamage(P.pos, 'OUT OF BOUNDS!', '#ff4d4d', 20); Sfx.hurt(); }
+      if (P.hp <= 0) gameOver(false);
+    } else P.oobT = 0;
+
     /* --- systems --- */
-    director(dt);
-    updateEnemies(dt);
+    if (G.state === 'play') { director(dt); updateEnemies(dt); }
     if (G.state === 'play') updateEShots(dt);
     if (G.state === 'play') {  // may have died above
       fireWeapons(dt);
