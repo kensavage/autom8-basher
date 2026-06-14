@@ -8,6 +8,29 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+<script>
+(() => {
+  const ua = navigator.userAgent || '';
+  const uaMobile = !!navigator.userAgentData?.mobile;
+  const iPadOS = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  const mobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Tablet|Kindle|Silk/i.test(ua);
+  const touch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches;
+  const smallScreen = Math.min(screen.width || innerWidth, screen.height || innerHeight) <= 900;
+  const desktopUA = /Windows NT|Macintosh|X11|Linux x86_64/i.test(ua) && !mobileUA && !iPadOS;
+  const isMobileDevice = uaMobile || iPadOS || mobileUA || (touch && coarse && smallScreen && !desktopUA);
+  const browser = /Edg\//.test(ua) ? 'edge'
+    : /OPR\/|Opera/.test(ua) ? 'opera'
+    : /CriOS|Chrome\//.test(ua) ? 'chrome'
+    : /FxiOS|Firefox\//.test(ua) ? 'firefox'
+    : /Safari\//.test(ua) ? 'safari'
+    : 'unknown';
+  const root = document.documentElement;
+  root.classList.add(isMobileDevice ? 'device-mobile' : 'device-desktop');
+  root.dataset.device = isMobileDevice ? 'mobile' : 'desktop';
+  root.dataset.browser = browser;
+})();
+</script>
 <style>
   :root{
     --ui-yellow:#ffd23e; --ui-red:#ff4d4d; --ui-green:#7dff6a; --ui-blue:#5ec8ff;
@@ -176,6 +199,15 @@
     .charCard{padding:8px 10px}
     .controls{display:none}
   }
+
+  html.device-mobile .controls{display:none}
+  html.device-mobile #mobileControls{display:block}
+  html.device-mobile #hint{display:none}
+  html.device-mobile #hpWrap{bottom:160px;width:210px}
+  html.device-desktop .controls{display:block}
+  html.device-desktop #mobileControls{display:none}
+  html.device-desktop #hint{display:block}
+  html.device-desktop #hpWrap{bottom:16px;width:280px}
 </style>
 </head>
 <body>
