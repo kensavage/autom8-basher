@@ -2419,6 +2419,14 @@ addEventListener('keydown', e => {
   }
 });
 addEventListener('keyup', e => keys[e.code] = false);
+function clearLiveInputs() {
+  for (const code in keys) keys[code] = false;
+  dragging = false;
+  touchInput.mx = 0;
+  touchInput.mz = 0;
+  touchInput.sprint = false;
+  touchInput.jumpBuffer = 0;
+}
 
 /* ---------- mouse camera: drag to orbit, scroll to zoom ---------- */
 let camYaw = 0, camPitch = 0.66, camDist = 17.2;
@@ -2448,7 +2456,10 @@ const endDrag = () => {
   if (document.pointerLockElement) { try { document.exitPointerLock(); } catch (err) {} }
 };
 addEventListener('mouseup', endDrag);
-addEventListener('blur', endDrag);
+addEventListener('blur', () => { endDrag(); clearLiveInputs(); });
+addEventListener('visibilitychange', () => {
+  if (document.hidden) { endDrag(); clearLiveInputs(); }
+});
 addEventListener('wheel', e => setCamDist(camDist + e.deltaY * 0.02), { passive: true });
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -3008,6 +3019,10 @@ function setQuality(r) {
 }
 function loop(now) {
   requestAnimationFrame(loop);
+  if (document.hidden) {
+    realLast = now;
+    return;
+  }
   const rd = now - realLast; realLast = now;
   if (rd < 250) ftAvg = ftAvg * 0.96 + rd * 0.04; // ignore tab-switch gaps
   if (--qualCooldown <= 0) {
@@ -3017,8 +3032,20 @@ function loop(now) {
   }
   tick(now);
 }
+const BACKGROUND_TICK_MS = 250;
+const BACKGROUND_STEP_MS = 50;
+const BACKGROUND_MAX_CATCHUP_MS = 1250;
+function runHiddenSimulation(now) {
+  if (!document.hidden) return;
+  if (G.state !== 'play') { last = now; return; }
+  const target = Math.min(now, last + BACKGROUND_MAX_CATCHUP_MS);
+  while (target - last > 0.5 && G.state === 'play') {
+    tick(Math.min(last + BACKGROUND_STEP_MS, target), false);
+  }
+}
+setInterval(() => runHiddenSimulation(performance.now()), BACKGROUND_TICK_MS);
 // the whole simulation step — also exposed as NB.tick for scripted testing
-function tick(now) {
+function tick(now, renderFrame = true) {
   let dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
   last = now;
   const wt = now / 1000;
@@ -3225,7 +3252,7 @@ function tick(now) {
   sun.position.set(target.x + 25, 45, target.z + 18);
   sun.target.position.set(target.x, 0, target.z);
 
-  composer.render();
+  if (renderFrame) composer.render();
 }
 requestAnimationFrame(loop);
 </script>
