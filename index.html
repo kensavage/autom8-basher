@@ -718,7 +718,7 @@ function resolveWorldCollisions() {
     }
   }
 
-  // --- broken city grid: roads, buildings, and a few LaunchClub billboards ---
+  // --- broken city grid: roads, buildings, and rooftop billboards ---
   const streetMat = new THREE.MeshStandardMaterial({ color: 0x24252a, roughness: 0.96, metalness: 0.02, side: THREE.DoubleSide });
   const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x70727a, roughness: 0.9, flatShading: true });
   const dashMat = new THREE.MeshStandardMaterial({ color: 0xf0c84c, emissive: 0x3a2600, emissiveIntensity: 0.12, roughness: 0.75 });
@@ -785,15 +785,23 @@ function resolveWorldCollisions() {
   }
   scatterRegional(new THREE.BoxGeometry(1, 1, 1), dashMat, dashItems, { receive: true });
 
-  const buildingBodies = [], buildingRoofs = [], buildingPads = [], windowItems = [], buildings = [];
+  const buildingBodies = [], buildingRoofs = [], buildingPads = [], windowItems = [], doorItems = [], parapetItems = [],
+        roofDetailItems = [], ventItems = [], antennaItems = [], awningItems = [], buildings = [];
   const bodyGeo = new RoundedBoxGeometry(1, 1, 1, 2, 0.04);
   bodyGeo.translate(0, 0.5, 0);
   const roofGeo = new THREE.BoxGeometry(1, 0.3, 1);
   const padGeo = new THREE.BoxGeometry(1, 0.12, 1);
   padGeo.translate(0, 0.06, 0);
   const windowGeo = new THREE.BoxGeometry(1, 1, 0.05);
-  const buildingCols = [0x3b4650, 0x525a64, 0x4b4149, 0x3f5054, 0x5a5047, 0x304050];
+  const doorGeo = new THREE.BoxGeometry(1, 1, 0.07);
+  const detailBoxGeo = new THREE.BoxGeometry(1, 1, 1);
+  const ventGeo = new THREE.CylinderGeometry(0.32, 0.32, 1, 8);
+  const antennaGeo = new THREE.CylinderGeometry(0.045, 0.045, 1, 5);
+  const awningGeo = new THREE.BoxGeometry(1, 1, 1);
+  const buildingCols = [0x3b4650, 0x525a64, 0x4b4149, 0x3f5054, 0x5a5047, 0x304050, 0x5b5960, 0x39484d, 0x59464f];
+  const roofCols = [0x1d222a, 0x24212b, 0x2b2d32, 0x302830, 0x202c2f];
   const windowCols = [0xffe9a8, 0xa6ecff, 0xd3f5ff, 0xffc86a];
+  const awningCols = [0x02e95b, 0x59dcea, 0xffd23e, 0xd95757, 0x8a6dff];
   function flatEnoughForBuilding(x, z, w, d) {
     const hs = [
       terrainH(x, z),
@@ -840,9 +848,55 @@ function resolveWorldCollisions() {
     buildings.push(b);
     buildingZones.push({ x, z, w, d });
     addBuildingColliders(b);
-    buildingBodies.push({ x, y: gy, z, sx: w, sy: h, sz: d, color: buildingCols[Math.floor(Math.random() * buildingCols.length)] });
-    buildingRoofs.push({ x, y: gy + h + 0.15, z, sx: w * 1.08, sy: 1, sz: d * 1.08, color: 0x222730 });
+    const bodyColor = buildingCols[Math.floor(Math.random() * buildingCols.length)];
+    const roofColor = roofCols[Math.floor(Math.random() * roofCols.length)];
+    buildingBodies.push({ x, y: gy, z, sx: w, sy: h, sz: d, color: bodyColor });
+    buildingRoofs.push({ x, y: gy + h + 0.15, z, sx: w * 1.08, sy: 1, sz: d * 1.08, color: roofColor });
     buildingPads.push({ x, y: gy - 0.05, z, sx: w + 2.4, sy: 1, sz: d + 2.4, color: 0x6a6870 });
+    const topY = gy + h;
+    const detailColor = new THREE.Color(bodyColor).multiplyScalar(0.72).getHex();
+    parapetItems.push(
+      { x, y: topY + 0.43, z: z - d / 2, sx: w + 0.55, sy: 0.55, sz: 0.24, color: roofColor },
+      { x, y: topY + 0.43, z: z + d / 2, sx: w + 0.55, sy: 0.55, sz: 0.24, color: roofColor },
+      { x: x - w / 2, y: topY + 0.43, z, sx: 0.24, sy: 0.55, sz: d + 0.55, color: roofColor },
+      { x: x + w / 2, y: topY + 0.43, z, sx: 0.24, sy: 0.55, sz: d + 0.55, color: roofColor },
+    );
+    if (Math.random() < 0.82) {
+      roofDetailItems.push({
+        x: x + (Math.random() - 0.5) * w * 0.36, y: topY + 0.38, z: z + (Math.random() - 0.5) * d * 0.36,
+        sx: 1.4 + Math.random() * 1.7, sy: 0.7 + Math.random() * 1.1, sz: 1.2 + Math.random() * 1.5,
+        color: detailColor,
+      });
+    }
+    const vents = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < vents; i++) {
+      ventItems.push({
+        x: x + (Math.random() - 0.5) * w * 0.62, y: topY + 0.42, z: z + (Math.random() - 0.5) * d * 0.62,
+        sx: 0.45 + Math.random() * 0.3, sy: 0.45 + Math.random() * 0.6, sz: 0.45 + Math.random() * 0.3,
+        color: 0x9aa4aa,
+      });
+    }
+    if (Math.random() < 0.45) {
+      antennaItems.push({
+        x: x + (Math.random() - 0.5) * w * 0.55, y: topY + 1.0, z: z + (Math.random() - 0.5) * d * 0.55,
+        sx: 1, sy: 2.0 + Math.random() * 2.0, sz: 1, color: 0x12161a,
+      });
+    }
+    const doorX = s.axis === 'x' ? x : x + normalX * (w / 2 + 0.065);
+    const doorZ = s.axis === 'x' ? z + normalZ * (d / 2 + 0.065) : z;
+    doorItems.push({ x: doorX, y: gy + 0.9, z: doorZ, ry: faceRotY, sx: 0.9, sy: 1.8, sz: 1, color: 0x15191e });
+    if (Math.random() < 0.78) {
+      awningItems.push({
+        x: s.axis === 'x' ? doorX : doorX + normalX * 0.12,
+        y: gy + 2.05,
+        z: s.axis === 'x' ? doorZ + normalZ * 0.12 : doorZ,
+        ry: faceRotY,
+        sx: 2.1 + Math.random() * 1.2,
+        sy: 0.18,
+        sz: 0.75,
+        color: awningCols[Math.floor(Math.random() * awningCols.length)],
+      });
+    }
     const cols = Math.max(2, Math.min(5, Math.floor(b.faceSpan / 2.2)));
     const rows = Math.max(2, Math.min(7, Math.floor((h - 1.4) / 1.6)));
     for (let row = 0; row < rows; row++) {
@@ -858,11 +912,33 @@ function resolveWorldCollisions() {
         });
       }
     }
+    if (Math.random() < 0.7) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const sideCols = Math.max(1, Math.min(4, Math.floor(d / 2.4)));
+      const sideRows = Math.max(1, Math.min(5, Math.floor((h - 2.0) / 1.7)));
+      for (let row = 0; row < sideRows; row++) {
+        for (let col = 0; col < sideCols; col++) {
+          if (Math.random() < 0.4) continue;
+          const off = ((col + 0.5) / sideCols - 0.5) * d * 0.68;
+          windowItems.push({
+            x: x + side * (w / 2 + 0.055), y: gy + 2.0 + row * 1.35, z: z + off,
+            ry: side > 0 ? Math.PI / 2 : -Math.PI / 2, sx: 0.6, sy: 0.36, sz: 1,
+            color: windowCols[Math.floor(Math.random() * windowCols.length)],
+          });
+        }
+      }
+    }
   }
   scatterRegional(padGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, flatShading: true }), buildingPads, { receive: true });
   scatterRegional(bodyGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, metalness: 0.03, flatShading: true }), buildingBodies, { shadows: true, receive: true });
   scatterRegional(roofGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, flatShading: true }), buildingRoofs, { shadows: true });
+  scatterRegional(detailBoxGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, flatShading: true }), parapetItems, { shadows: true });
+  scatterRegional(detailBoxGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.88, flatShading: true }), roofDetailItems, { shadows: true });
+  scatterRegional(ventGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.72, metalness: 0.14, flatShading: true }), ventItems, { shadows: true });
+  scatterRegional(antennaGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0.2, flatShading: true }), antennaItems, { shadows: true });
   scatterRegional(windowGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), windowItems);
+  scatterRegional(doorGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), doorItems);
+  scatterRegional(awningGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, flatShading: true }), awningItems, { shadows: true });
 
   const MAX_BILLBOARDS_PER_BRAND = 3;
   const loadBillboardTexture = src => {
@@ -905,30 +981,56 @@ function resolveWorldCollisions() {
       trimMat: new THREE.MeshBasicMaterial({ color: brand.trim, side: THREE.DoubleSide }),
     };
   });
+  const billboardSupportMat = new THREE.MeshStandardMaterial({ color: 0x141a20, roughness: 0.62, metalness: 0.28, flatShading: true });
+  const billboardLightMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0 });
   function addBrandBillboard(b, brand) {
     const group = new THREE.Group();
-    const panelW = Math.max(5.8, Math.min(9.8, b.faceSpan * 0.82));
-    const panelH = 2.25;
+    const panelW = Math.max(6.8, Math.min(11.5, b.faceSpan * 0.92));
+    const panelH = 2.45;
     let logoW = panelW * brand.logoScale;
     let logoH = logoW / brand.aspect;
     if (logoH > panelH * 0.74) {
       logoH = panelH * 0.74;
       logoW = logoH * brand.aspect;
     }
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(panelW, panelH), brand.panelMat);
+    const supportH = 0.8;
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(panelW, panelH, 0.18), brand.panelMat);
     const logo = new THREE.Mesh(new THREE.PlaneGeometry(logoW, logoH), brand.logoMat);
-    const topTrim = new THREE.Mesh(new THREE.PlaneGeometry(panelW, 0.07), brand.trimMat);
-    const bottomTrim = new THREE.Mesh(new THREE.PlaneGeometry(panelW, 0.07), brand.trimMat);
-    logo.position.z = 0.035;
-    topTrim.position.set(0, panelH / 2 - 0.12, 0.04);
-    bottomTrim.position.set(0, -panelH / 2 + 0.12, 0.04);
-    group.add(panel, logo, topTrim, bottomTrim);
+    const topTrim = new THREE.Mesh(new THREE.BoxGeometry(panelW + 0.25, 0.09, 0.23), brand.trimMat);
+    const bottomTrim = new THREE.Mesh(new THREE.BoxGeometry(panelW + 0.25, 0.09, 0.23), brand.trimMat);
+    const postA = new THREE.Mesh(new THREE.BoxGeometry(0.18, supportH, 0.18), billboardSupportMat);
+    const postB = postA.clone();
+    const cross = new THREE.Mesh(new THREE.BoxGeometry(panelW * 0.78, 0.14, 0.16), billboardSupportMat);
+    const baseA = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.12, 0.85), billboardSupportMat);
+    const baseB = baseA.clone();
+    const face = new THREE.Group();
+    face.rotation.x = 0.18; // rooftop billboards lean toward the street so the overhead camera can read them
+    logo.position.z = 0.105;
+    topTrim.position.set(0, panelH / 2 - 0.1, 0.13);
+    bottomTrim.position.set(0, -panelH / 2 + 0.1, 0.13);
+    postA.position.set(-panelW * 0.34, -panelH / 2 - supportH / 2, -0.08);
+    postB.position.set(panelW * 0.34, -panelH / 2 - supportH / 2, -0.08);
+    cross.position.set(0, -panelH / 2 - supportH * 0.43, -0.08);
+    baseA.position.set(postA.position.x, -panelH / 2 - supportH - 0.06, -0.08);
+    baseB.position.set(postB.position.x, -panelH / 2 - supportH - 0.06, -0.08);
+    face.add(panel, logo, topTrim, bottomTrim);
+    group.add(face, postA, postB, cross, baseA, baseB);
+    for (const lx of [-0.34, 0, 0.34]) {
+      const light = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.16, 0.24), billboardLightMat);
+      light.position.set(panelW * lx, panelH / 2 + 0.18, 0.22);
+      face.add(light);
+    }
     const nx = b.normalX, nz = b.normalZ;
-    group.position.set(b.x + nx * (b.w / 2 + 0.11), b.gy + Math.min(b.h - 1.15, Math.max(3.25, b.h * 0.62)), b.z + nz * (b.d / 2 + 0.11));
+    group.position.set(
+      b.x + nx * Math.max(0, b.w / 2 - 0.35),
+      b.gy + b.h + supportH + panelH / 2 + 0.22,
+      b.z + nz * Math.max(0, b.d / 2 - 0.35)
+    );
     group.rotation.y = b.faceRotY;
+    group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(group);
     mapBillboardCounts[brand.id]++;
-    mapBillboards.push({ brand: brand.id, x: group.position.x, z: group.position.z, normalX: nx, normalZ: nz });
+    mapBillboards.push({ brand: brand.id, x: group.position.x, y: group.position.y, z: group.position.z, normalX: nx, normalZ: nz });
   }
   const billboardCandidates = buildings
     .filter(b => b.h > 7 && b.faceSpan > 6.4)
