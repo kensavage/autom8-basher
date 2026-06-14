@@ -40,6 +40,16 @@
   #bossOuter{height:14px;background:#000c;border:2px solid #000;border-radius:7px;overflow:hidden}
   #bossFill{height:100%;width:100%;background:linear-gradient(180deg,#ff5a6e,#c4102a);border-radius:5px}
   #hint{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);color:#fffa;font-size:13px;font-weight:700;text-shadow:0 1px 2px #000}
+  #mobileControls{position:absolute;inset:0;display:none;pointer-events:none;z-index:14}
+  #moveStick{position:absolute;left:max(18px,env(safe-area-inset-left));bottom:max(24px,env(safe-area-inset-bottom));width:126px;height:126px;border-radius:50%;background:radial-gradient(circle at 50% 50%,#ffffff24,#0008 68%,#000b);border:2px solid #ffffff38;box-shadow:0 10px 24px #0008,inset 0 0 22px #ffffff18;pointer-events:auto;touch-action:none}
+  #moveKnob{position:absolute;left:50%;top:50%;width:54px;height:54px;border-radius:50%;background:linear-gradient(180deg,#ffe06e,#f5a40b 72%,#d98a00);border:2px solid #fff7;box-shadow:0 5px 0 #8a5400,0 8px 18px #0008;transform:translate(-50%,-50%)}
+  .touchActions{position:absolute;right:max(18px,env(safe-area-inset-right));bottom:max(24px,env(safe-area-inset-bottom));display:grid;grid-template-columns:72px 72px;gap:10px;pointer-events:none}
+  .zoomBtns{grid-column:1 / -1;display:flex;justify-content:flex-end;gap:10px}
+  .touchBtn{width:72px;height:58px;border:2px solid #ffffff38;border-radius:12px;background:linear-gradient(180deg,#2c2144,#191028);color:#fff;font-family:var(--display);font-size:16px;letter-spacing:1px;text-shadow:0 2px 0 #000;border-bottom-color:#0008;box-shadow:0 6px 0 #0a0712,0 10px 22px #0008;pointer-events:auto;touch-action:none}
+  .touchBtn:active,.touchBtn.held{transform:translateY(4px);box-shadow:0 2px 0 #0a0712,0 5px 14px #0008;background:linear-gradient(180deg,#3b2a5e,#211432)}
+  .touchBtn.primary{background:linear-gradient(180deg,#ffe06e,#f5a40b 72%,#d98a00);color:#3a2200;text-shadow:none;border-color:#fff6;box-shadow:0 6px 0 #8a5400,0 10px 22px #0008}
+  .touchBtn.primary:active,.touchBtn.primary.held{box-shadow:0 2px 0 #8a5400,0 5px 14px #0008}
+  .zoomBtn{width:58px;height:46px;font-size:24px;line-height:1}
 
   /* ---------- damage numbers ---------- */
   .dmg{position:absolute;z-index:5;color:#fff;font-family:var(--display);font-size:17px;text-shadow:0 0 4px #000,0 2px 0 #000;pointer-events:none;will-change:transform,opacity;letter-spacing:1px}
@@ -136,7 +146,7 @@
     .btnRow{flex-wrap:wrap;justify-content:center;gap:8px}
     .bigBtn{font-size:20px;letter-spacing:2px;padding:11px 28px;border-radius:12px}
     .bigBtn.secondary{font-size:18px;padding:10px 22px}
-    .controls{max-width:90vw;margin-top:14px;font-size:11px;line-height:1.55}
+    .controls{display:none}
     #menuCoins{margin-bottom:12px}
     #shopTitle{font-size:36px;text-align:center}
     #shopGrid{grid-template-columns:repeat(2,minmax(136px,1fr));gap:8px;width:min(92vw,360px);max-height:58vh;overflow:auto}
@@ -149,6 +159,12 @@
     #weaponTray{left:10px;max-width:160px}
     #bossWrap{width:calc(100vw - 32px)}
     #hint{width:92vw;text-align:center;font-size:10px;line-height:1.4}
+  }
+
+  @media (pointer: coarse), (max-width: 760px) {
+    #mobileControls{display:block}
+    #hint{display:none}
+    #hpWrap{bottom:160px;width:210px}
   }
 
   @media (max-width: 760px) and (max-height: 700px) {
@@ -178,6 +194,17 @@
     <div id="combo"></div>
     <div id="banner"></div>
     <div id="hint">WASD move &nbsp;·&nbsp; SHIFT sprint &nbsp;·&nbsp; SPACE jump &nbsp;·&nbsp; drag mouse = camera &nbsp;·&nbsp; scroll = zoom &nbsp;·&nbsp; P pause &nbsp;·&nbsp; M mute</div>
+    <div id="mobileControls" aria-label="Mobile controls">
+      <div id="moveStick" aria-label="Move"><div id="moveKnob"></div></div>
+      <div class="touchActions">
+        <div class="zoomBtns">
+          <button class="touchBtn zoomBtn" id="zoomOutBtn" aria-label="Zoom out" type="button">-</button>
+          <button class="touchBtn zoomBtn" id="zoomInBtn" aria-label="Zoom in" type="button">+</button>
+        </div>
+        <button class="touchBtn primary" id="jumpBtn" type="button">JUMP</button>
+        <button class="touchBtn" id="sprintBtn" type="button">SPRINT</button>
+      </div>
+    </div>
   </div>
 
   <div class="screen" id="menu" style="display:flex">
@@ -2038,6 +2065,7 @@ function refreshWeaponTray() {
    INPUT
 ============================================================ */
 const keys = {};
+const touchInput = { mx: 0, mz: 0, sprint: false, jumpBuffer: 0 };
 let secretBuffer = '';
 addEventListener('keydown', e => {
   keys[e.code] = true;
@@ -2053,6 +2081,9 @@ addEventListener('keyup', e => keys[e.code] = false);
 
 /* ---------- mouse camera: drag to orbit, scroll to zoom ---------- */
 let camYaw = 0, camPitch = 0.66, camDist = 17.2;
+function setCamDist(v) {
+  camDist = THREE.MathUtils.clamp(v, 9.5, 24);
+}
 let dragging = false, lastMX = 0, lastMY = 0;
 addEventListener('mousedown', e => {
   dragging = true; lastMX = e.clientX; lastMY = e.clientY;
@@ -2077,8 +2108,128 @@ const endDrag = () => {
 };
 addEventListener('mouseup', endDrag);
 addEventListener('blur', endDrag);
-addEventListener('wheel', e => { camDist = THREE.MathUtils.clamp(camDist + e.deltaY * 0.02, 9.5, 24); }, { passive: true });
+addEventListener('wheel', e => setCamDist(camDist + e.deltaY * 0.02), { passive: true });
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+
+/* ---------- mobile controls: joystick, action buttons, drag/pinch camera ---------- */
+{
+  const stick = document.getElementById('moveStick');
+  const knob = document.getElementById('moveKnob');
+  const jumpBtn = document.getElementById('jumpBtn');
+  const sprintBtn = document.getElementById('sprintBtn');
+  const zoomInBtn = document.getElementById('zoomInBtn');
+  const zoomOutBtn = document.getElementById('zoomOutBtn');
+  let stickPointer = null;
+
+  const resetStick = () => {
+    stickPointer = null;
+    touchInput.mx = 0;
+    touchInput.mz = 0;
+    knob.style.transform = 'translate(-50%,-50%)';
+  };
+  const updateStick = (e) => {
+    const r = stick.getBoundingClientRect();
+    const max = r.width * 0.34;
+    let dx = e.clientX - (r.left + r.width / 2);
+    let dy = e.clientY - (r.top + r.height / 2);
+    const len = Math.hypot(dx, dy);
+    if (len > max) { dx = dx / len * max; dy = dy / len * max; }
+    const nx = Math.abs(dx / max) < 0.12 ? 0 : dx / max;
+    const nz = Math.abs(dy / max) < 0.12 ? 0 : dy / max;
+    touchInput.mx = nx;
+    touchInput.mz = nz;
+    knob.style.transform = `translate(-50%,-50%) translate(${dx}px,${dy}px)`;
+  };
+  stick.addEventListener('pointerdown', e => {
+    stickPointer = e.pointerId;
+    try { stick.setPointerCapture?.(e.pointerId); } catch (err) {}
+    updateStick(e);
+    e.preventDefault();
+  });
+  stick.addEventListener('pointermove', e => {
+    if (e.pointerId !== stickPointer) return;
+    updateStick(e);
+    e.preventDefault();
+  });
+  ['pointerup','pointercancel','lostpointercapture'].forEach(type => {
+    stick.addEventListener(type, e => {
+      if (e.pointerId === stickPointer || type === 'lostpointercapture') resetStick();
+    });
+  });
+
+  const bindHold = (btn, down, up) => {
+    const release = (e) => {
+      btn.classList.remove('held');
+      up?.();
+      if (e?.pointerId != null) { try { btn.releasePointerCapture?.(e.pointerId); } catch (err) {} }
+    };
+    btn.addEventListener('pointerdown', e => {
+      btn.classList.add('held');
+      try { btn.setPointerCapture?.(e.pointerId); } catch (err) {}
+      down?.();
+      e.preventDefault();
+    });
+    ['pointerup','pointercancel','lostpointercapture'].forEach(type => btn.addEventListener(type, release));
+  };
+  bindHold(jumpBtn, () => { touchInput.jumpBuffer = 0.22; });
+  bindHold(sprintBtn, () => { touchInput.sprint = true; }, () => { touchInput.sprint = false; });
+
+  const bindZoom = (btn, delta) => {
+    let repeat = null;
+    bindHold(btn, () => {
+      setCamDist(camDist + delta);
+      repeat = setInterval(() => setCamDist(camDist + delta * 0.55), 120);
+    }, () => {
+      if (repeat) clearInterval(repeat);
+      repeat = null;
+    });
+  };
+  bindZoom(zoomInBtn, -1.15);
+  bindZoom(zoomOutBtn, 1.15);
+
+  let camTouchId = null, camLastX = 0, camLastY = 0, pinchDist = 0, pinchCamDist = camDist;
+  const touchDist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  renderer.domElement.addEventListener('touchstart', e => {
+    if (G.state !== 'play') return;
+    if (e.touches.length >= 2) {
+      camTouchId = null;
+      pinchDist = touchDist(e.touches[0], e.touches[1]);
+      pinchCamDist = camDist;
+    } else if (e.touches.length === 1) {
+      const t = e.touches[0];
+      camTouchId = t.identifier;
+      camLastX = t.clientX;
+      camLastY = t.clientY;
+    }
+    e.preventDefault();
+  }, { passive: false });
+  renderer.domElement.addEventListener('touchmove', e => {
+    if (G.state !== 'play') return;
+    if (e.touches.length >= 2) {
+      const d = Math.max(30, touchDist(e.touches[0], e.touches[1]));
+      if (pinchDist > 0) setCamDist(pinchCamDist * (pinchDist / d));
+    } else if (camTouchId != null) {
+      const t = Array.from(e.touches).find(touch => touch.identifier === camTouchId);
+      if (t) {
+        const dx = t.clientX - camLastX;
+        const dy = t.clientY - camLastY;
+        camYaw -= dx * 0.0055;
+        camPitch = THREE.MathUtils.clamp(camPitch + dy * 0.0042, 0.32, 1.25);
+        camLastX = t.clientX;
+        camLastY = t.clientY;
+      }
+    }
+    e.preventDefault();
+  }, { passive: false });
+  renderer.domElement.addEventListener('touchend', e => {
+    if (e.touches.length < 2) pinchDist = 0;
+    if (camTouchId != null && !Array.from(e.touches).some(t => t.identifier === camTouchId)) camTouchId = null;
+  }, { passive: true });
+  renderer.domElement.addEventListener('touchcancel', () => {
+    camTouchId = null;
+    pinchDist = 0;
+  }, { passive: true });
+}
 
 /* ============================================================
    SPAWN DIRECTOR
@@ -2458,7 +2609,7 @@ document.getElementById('resetSave').onclick = () => {
 refreshMenuCoins();
 
 // console handle for tinkering: NB.gainXP(50), NB.spawnEnemy('boss'), ...
-window.NB = { G, P, save, META, gainXP, spawnEnemy, composer, renderer, terrainH, pots, breakPotsNear, spawnPot, persistSave, Music, syncOrbs, colliders, tick: (now) => tick(now) };
+window.NB = { G, P, save, META, gainXP, spawnEnemy, composer, renderer, terrainH, pots, breakPotsNear, spawnPot, persistSave, Music, syncOrbs, colliders, touchInput, setCamDist, get camDist(){ return camDist; }, tick: (now) => tick(now) };
 
 /* ============================================================
    MAIN LOOP
@@ -2508,6 +2659,7 @@ function tick(now) {
 
   if (G.state === 'play') {
     G.t += dt;
+    if (touchInput.jumpBuffer > 0) touchInput.jumpBuffer = Math.max(0, touchInput.jumpBuffer - dt);
 
     /* --- player movement (camera-relative, cliff-aware) --- */
     let mx = 0, mz = 0;
@@ -2515,11 +2667,13 @@ function tick(now) {
     if (keys.KeyS || keys.ArrowDown) mz += 1;
     if (keys.KeyA || keys.ArrowLeft) mx -= 1;
     if (keys.KeyD || keys.ArrowRight) mx += 1;
+    mx += touchInput.mx;
+    mz += touchInput.mz;
     const moving = !!(mx || mz);
     P.movingNow = moving;
 
     // sprint: hold SHIFT for a burst of speed, gated by stamina
-    const wantSprint = (keys.ShiftLeft || keys.ShiftRight) && moving;
+    const wantSprint = (keys.ShiftLeft || keys.ShiftRight || touchInput.sprint) && moving;
     P.sprinting = wantSprint && !P.winded && P.stamina > 0;
     if (P.sprinting) {
       P.stamina -= 30 * dt;
@@ -2564,6 +2718,12 @@ function tick(now) {
       else P.pos.y = gh;
     }
     if (keys.Space && P.onGround) { P.vy = 9.5; P.onGround = false; Sfx.jump(); }
+    if (touchInput.jumpBuffer > 0 && P.onGround) {
+      touchInput.jumpBuffer = 0;
+      P.vy = 9.5;
+      P.onGround = false;
+      Sfx.jump();
+    }
     if (!P.onGround) {
       P.vy -= 26 * dt;
       P.pos.y += P.vy * dt;
