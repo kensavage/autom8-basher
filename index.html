@@ -101,7 +101,9 @@
 	  .statPill .k{display:block;color:#02e95b;font-family:var(--display);font-size:12px;letter-spacing:2px;text-transform:uppercase;text-shadow:0 2px 0 #001b0a}
 	  .statPill .v{display:block;color:#fff;font-size:13px;font-weight:900;text-shadow:0 2px 0 #000;margin-top:2px}
 	  .setupRow{display:flex;gap:10px;align-items:center;justify-content:center;margin:-6px 0 16px;flex-wrap:wrap}
-	  #playerName{width:150px;background:#05070ee6;color:#fff;border:2px solid #4a3c6e;border-radius:8px;padding:9px 10px;font-family:var(--body);font-size:13px;font-weight:900;text-align:center;outline:none}
+	  .playerNameField{display:flex;align-items:center;gap:7px;background:#05070ecc;border:1px solid #ffffff18;border-radius:8px;padding:5px 6px}
+	  .playerNameLabel{color:#02e95b;font-family:var(--display);font-size:11px;letter-spacing:1px;text-transform:uppercase;text-shadow:0 2px 0 #001b0a;white-space:nowrap}
+	  #playerName{width:126px;background:#05070ee6;color:#fff;border:2px solid #4a3c6e;border-radius:8px;padding:7px 9px;font-family:var(--body);font-size:13px;font-weight:900;text-align:center;outline:none}
 	  #playerName:focus{border-color:#02e95b;box-shadow:0 0 16px #02e95b33}
 	  .difficultyRow{display:flex;gap:6px;background:#05070ecc;border:1px solid #ffffff18;border-radius:8px;padding:5px}
 	  .difficultyBtn{pointer-events:auto;border:none;border-radius:6px;background:transparent;color:#a99cc4;font-family:var(--display);font-size:12px;letter-spacing:1px;padding:7px 10px;cursor:pointer}
@@ -200,7 +202,9 @@
 	    .statPill .k{font-size:10px;letter-spacing:1.5px}
 	    .statPill .v{font-size:11px}
 	    .setupRow{gap:6px;margin:0 0 10px}
-	    #playerName{width:124px;padding:8px;font-size:12px}
+	    .playerNameField{gap:5px;padding:4px 5px}
+	    .playerNameLabel{font-size:10px}
+	    #playerName{width:112px;padding:7px;font-size:12px}
 	    .difficultyBtn{font-size:11px;padding:6px 7px}
 	    .leaderboardPanel{width:min(92vw,360px);margin:0 0 10px;padding:8px;max-height:122px;overflow:hidden}
 	    .leaderboardHead{font-size:11px;margin-bottom:4px}
@@ -296,7 +300,10 @@
 	    <div id="menuCoins">🪙 0 coins</div>
 	    <div class="menuStats" id="menuStats" aria-live="polite"></div>
 	    <div class="setupRow">
-	      <input id="playerName" maxlength="16" placeholder="PLAYER NAME" aria-label="Player name">
+	      <div class="playerNameField">
+	        <label class="playerNameLabel" for="playerName">Name</label>
+	        <input id="playerName" name="playerName" maxlength="16" placeholder="SHADOW" autocomplete="nickname" spellcheck="false">
+	      </div>
 	      <div class="difficultyRow" id="difficultyRow" aria-label="Difficulty"></div>
 	    </div>
 	    <div class="leaderboardPanel" aria-live="polite">
