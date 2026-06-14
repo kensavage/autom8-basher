@@ -593,6 +593,20 @@ function addCollider(x, z, r) {
   if (!collGrid.has(key)) collGrid.set(key, []);
   collGrid.get(key).push(c);
 }
+const streetZones = [];
+const buildingZones = [];
+let mapLaunchLogoCount = 0;
+function isStreetZone(x, z, pad = 0) {
+  return streetZones.some(s => s.axis === 'x'
+    ? Math.abs(z - s.coord) <= s.width / 2 + pad && x >= s.start - pad && x <= s.end + pad
+    : Math.abs(x - s.coord) <= s.width / 2 + pad && z >= s.start - pad && z <= s.end + pad);
+}
+function isBuildingZone(x, z, pad = 0) {
+  return buildingZones.some(b => Math.abs(x - b.x) <= b.w / 2 + pad && Math.abs(z - b.z) <= b.d / 2 + pad);
+}
+function isUrbanDecorClear(x, z, pad = 0) {
+  return !isStreetZone(x, z, pad) && !isBuildingZone(x, z, pad);
+}
 function resolveWorldCollisions() {
   const pr = 0.55; // player body radius
   const gx0 = Math.floor((P.pos.x + 300) / 8), gz0 = Math.floor((P.pos.z + 300) / 8);
@@ -702,9 +716,189 @@ function resolveWorldCollisions() {
     }
   }
 
+  // --- broken city grid: roads, buildings, and a few LaunchClub billboards ---
+  const streetMat = new THREE.MeshStandardMaterial({ color: 0x24252a, roughness: 0.96, metalness: 0.02, side: THREE.DoubleSide });
+  const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x70727a, roughness: 0.9, flatShading: true });
+  const dashMat = new THREE.MeshStandardMaterial({ color: 0xf0c84c, emissive: 0x3a2600, emissiveIntensity: 0.12, roughness: 0.75 });
+  const streetLimit = WORLD - 20;
+  const streetDefs = [];
+  const streetCoord = i => -streetLimit + ((streetLimit * 2) / 5) * (i + 1) + (Math.random() - 0.5) * 20;
+  for (let i = 0; i < 4; i++) {
+    streetDefs.push({ axis: 'x', coord: streetCoord(i), start: -streetLimit, end: streetLimit, width: 7.2 + Math.random() * 1.9 });
+    streetDefs.push({ axis: 'z', coord: streetCoord(i), start: -streetLimit, end: streetLimit, width: 7.2 + Math.random() * 1.9 });
+  }
+  streetZones.push(...streetDefs);
+
+  function makeTerrainStrip(s, width, offset = 0, lift = 0.055) {
+    const steps = 110;
+    const across = Math.max(2, Math.ceil(width / 2));
+    const verts = [], uvs = [], idx = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const a = s.start + (s.end - s.start) * t;
+      for (let j = 0; j <= across; j++) {
+        const cross = offset - width / 2 + width * (j / across);
+        if (s.axis === 'x') {
+          const z = s.coord + cross;
+          verts.push(a, terrainH(a, z) + lift, z);
+        } else {
+          const x = s.coord + cross;
+          verts.push(x, terrainH(x, a) + lift, a);
+        }
+        uvs.push(t * 12, j / across);
+      }
+      if (i < steps) {
+        const row = i * (across + 1);
+        const next = row + across + 1;
+        for (let j = 0; j < across; j++) {
+          idx.push(row + j, next + j, row + j + 1, row + j + 1, next + j, next + j + 1);
+        }
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  const dashItems = [];
+  for (const s of streetDefs) {
+    const road = new THREE.Mesh(makeTerrainStrip(s, s.width), streetMat);
+    road.receiveShadow = true;
+    scene.add(road);
+    for (const side of [-1, 1]) {
+      const walk = new THREE.Mesh(makeTerrainStrip(s, 1.35, side * (s.width / 2 + 0.95), 0.08), sidewalkMat);
+      walk.receiveShadow = true;
+      scene.add(walk);
+    }
+    for (let a = s.start + 12; a < s.end; a += 18) {
+      if (s.axis === 'x') {
+        dashItems.push({ x: a, y: terrainH(a, s.coord) + 0.12, z: s.coord, sx: 5.2, sy: 0.035, sz: 0.22 });
+      } else {
+        dashItems.push({ x: s.coord, y: terrainH(s.coord, a) + 0.12, z: a, sx: 0.22, sy: 0.035, sz: 5.2 });
+      }
+    }
+  }
+  scatterRegional(new THREE.BoxGeometry(1, 1, 1), dashMat, dashItems, { receive: true });
+
+  const buildingBodies = [], buildingRoofs = [], buildingPads = [], windowItems = [], buildings = [];
+  const bodyGeo = new RoundedBoxGeometry(1, 1, 1, 2, 0.04);
+  bodyGeo.translate(0, 0.5, 0);
+  const roofGeo = new THREE.BoxGeometry(1, 0.3, 1);
+  const padGeo = new THREE.BoxGeometry(1, 0.12, 1);
+  padGeo.translate(0, 0.06, 0);
+  const windowGeo = new THREE.BoxGeometry(1, 1, 0.05);
+  const buildingCols = [0x3b4650, 0x525a64, 0x4b4149, 0x3f5054, 0x5a5047, 0x304050];
+  const windowCols = [0xffe9a8, 0xa6ecff, 0xd3f5ff, 0xffc86a];
+  function flatEnoughForBuilding(x, z, w, d) {
+    const hs = [
+      terrainH(x, z),
+      terrainH(x - w / 2, z - d / 2),
+      terrainH(x + w / 2, z - d / 2),
+      terrainH(x - w / 2, z + d / 2),
+      terrainH(x + w / 2, z + d / 2),
+    ];
+    return Math.max(...hs) - Math.min(...hs) < 0.95;
+  }
+  function overlapsBuilding(x, z, w, d, pad = 4) {
+    return buildings.some(b => Math.abs(x - b.x) < (w + b.w) / 2 + pad && Math.abs(z - b.z) < (d + b.d) / 2 + pad);
+  }
+  function addBuildingColliders(b) {
+    const cols = Math.max(1, Math.ceil(b.w / 4));
+    const rows = Math.max(1, Math.ceil(b.d / 4));
+    const r = Math.max(1.1, Math.min(2.2, Math.min(b.w / cols, b.d / rows) * 0.68));
+    for (let ix = 0; ix < cols; ix++) {
+      for (let iz = 0; iz < rows; iz++) {
+        addCollider(b.x + ((ix + 0.5) / cols - 0.5) * b.w, b.z + ((iz + 0.5) / rows - 0.5) * b.d, r);
+      }
+    }
+  }
+  let buildingAttempts = 0;
+  while (buildings.length < 34 && buildingAttempts < 900) {
+    buildingAttempts++;
+    const s = streetDefs[Math.floor(Math.random() * streetDefs.length)];
+    const along = s.start + 18 + Math.random() * (s.end - s.start - 36);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const w = 5.5 + Math.random() * 8.5;
+    const d = 5.5 + Math.random() * 8.5;
+    const h = 5 + Math.random() * 13;
+    const shoulder = s.width / 2 + (s.axis === 'x' ? d : w) / 2 + 3.2 + Math.random() * 7.5;
+    let x, z, normalX = 0, normalZ = 0, faceRotY = 0;
+    if (s.axis === 'x') {
+      x = along; z = s.coord + side * shoulder; normalZ = -side; faceRotY = normalZ > 0 ? 0 : Math.PI;
+    } else {
+      x = s.coord + side * shoulder; z = along; normalX = -side; faceRotY = normalX > 0 ? Math.PI / 2 : -Math.PI / 2;
+    }
+    if (Math.abs(x) > WORLD - 14 || Math.abs(z) > WORLD - 14 || Math.hypot(x, z) < 30) continue;
+    if (!flatEnoughForBuilding(x, z, w, d) || overlapsBuilding(x, z, w, d)) continue;
+    const gy = terrainH(x, z);
+    const b = { x, z, w, d, h, gy, normalX, normalZ, faceRotY, faceSpan: s.axis === 'x' ? w : d };
+    buildings.push(b);
+    buildingZones.push({ x, z, w, d });
+    addBuildingColliders(b);
+    buildingBodies.push({ x, y: gy, z, sx: w, sy: h, sz: d, color: buildingCols[Math.floor(Math.random() * buildingCols.length)] });
+    buildingRoofs.push({ x, y: gy + h + 0.15, z, sx: w * 1.08, sy: 1, sz: d * 1.08, color: 0x222730 });
+    buildingPads.push({ x, y: gy - 0.05, z, sx: w + 2.4, sy: 1, sz: d + 2.4, color: 0x6a6870 });
+    const cols = Math.max(2, Math.min(5, Math.floor(b.faceSpan / 2.2)));
+    const rows = Math.max(2, Math.min(7, Math.floor((h - 1.4) / 1.6)));
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        if (Math.random() < 0.28) continue;
+        const off = ((col + 0.5) / cols - 0.5) * (b.faceSpan * 0.72);
+        const wx = s.axis === 'x' ? x + off : x + normalX * (w / 2 + 0.055);
+        const wz = s.axis === 'x' ? z + normalZ * (d / 2 + 0.055) : z + off;
+        windowItems.push({
+          x: wx, y: gy + 1.55 + row * 1.28, z: wz,
+          ry: faceRotY, sx: 0.72, sy: 0.42, sz: 1,
+          color: windowCols[Math.floor(Math.random() * windowCols.length)],
+        });
+      }
+    }
+  }
+  scatterRegional(padGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, flatShading: true }), buildingPads, { receive: true });
+  scatterRegional(bodyGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, metalness: 0.03, flatShading: true }), buildingBodies, { shadows: true, receive: true });
+  scatterRegional(roofGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, flatShading: true }), buildingRoofs, { shadows: true });
+  scatterRegional(windowGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), windowItems);
+
+  const MAX_MAP_LOGOS = 3;
+  const logoTex = new THREE.TextureLoader().load('assets/launchclub-white-text-green-logo.png');
+  logoTex.colorSpace = THREE.SRGBColorSpace;
+  logoTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const billboardPanelMat = new THREE.MeshStandardMaterial({ color: 0x050808, roughness: 0.58, metalness: 0.18 });
+  const billboardLogoMat = new THREE.MeshBasicMaterial({ map: logoTex, transparent: true, side: THREE.DoubleSide, depthWrite: false });
+  const billboardTrimMat = new THREE.MeshBasicMaterial({ color: 0x02e95b, side: THREE.DoubleSide });
+  function addLaunchBillboard(b) {
+    const group = new THREE.Group();
+    const panelW = Math.max(5.8, Math.min(9.8, b.faceSpan * 0.82));
+    const panelH = 2.25;
+    const logoW = panelW * 0.84;
+    const logoH = logoW * (222 / 1400);
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(panelW, panelH), billboardPanelMat);
+    const logo = new THREE.Mesh(new THREE.PlaneGeometry(logoW, logoH), billboardLogoMat);
+    const topTrim = new THREE.Mesh(new THREE.PlaneGeometry(panelW, 0.07), billboardTrimMat);
+    const bottomTrim = new THREE.Mesh(new THREE.PlaneGeometry(panelW, 0.07), billboardTrimMat);
+    logo.position.z = 0.035;
+    topTrim.position.set(0, panelH / 2 - 0.12, 0.04);
+    bottomTrim.position.set(0, -panelH / 2 + 0.12, 0.04);
+    group.add(panel, logo, topTrim, bottomTrim);
+    const nx = b.normalX, nz = b.normalZ;
+    group.position.set(b.x + nx * (b.w / 2 + 0.11), b.gy + Math.min(b.h - 1.15, Math.max(3.25, b.h * 0.62)), b.z + nz * (b.d / 2 + 0.11));
+    group.rotation.y = b.faceRotY;
+    scene.add(group);
+  }
+  const billboardCandidates = buildings
+    .filter(b => b.h > 7 && b.faceSpan > 6.4)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, MAX_MAP_LOGOS);
+  mapLaunchLogoCount = billboardCandidates.length;
+  billboardCandidates.forEach(addLaunchBillboard);
+
   const grassItems = [];
   for (let i = 0; i < 6000; i++) {
     const x = (Math.random()*2-1)*(WORLD+8), z = (Math.random()*2-1)*(WORLD+8);
+    if (!isUrbanDecorClear(x, z, 0.8)) continue;
     const s = 0.85 + Math.random()*1.1;
     grassItems.push({
       x, y: terrainH(x, z), z,
@@ -722,6 +916,7 @@ function resolveWorldCollisions() {
   const flowerItems = [];
   for (let i = 0; i < 1000; i++) {
     const x = (Math.random()*2-1)*(WORLD+5), z = (Math.random()*2-1)*(WORLD+5);
+    if (!isUrbanDecorClear(x, z, 1.2)) continue;
     flowerItems.push({
       x, y: terrainH(x, z), z,
       ry: Math.random()*Math.PI, rz: (Math.random()-0.5)*0.3,
@@ -739,7 +934,7 @@ function resolveWorldCollisions() {
   let nTrunk = 0;
   while (nTrunk < 380) {
     const x = (Math.random()*2-1)*(WORLD+18), z = (Math.random()*2-1)*(WORLD+18);
-    if (Math.hypot(x, z) < 14) continue;
+    if (Math.hypot(x, z) < 14 || !isUrbanDecorClear(x, z, 4.2)) continue;
     nTrunk++;
     const gy = terrainH(x, z), s = 0.8 + Math.random()*1.5;
     trunkItems.push({ x, y: gy, z, ry: Math.random()*6.3, sx: s });
@@ -763,7 +958,7 @@ function resolveWorldCollisions() {
   let nRock = 0;
   while (nRock < 220) {
     const x = (Math.random()*2-1)*(WORLD+18), z = (Math.random()*2-1)*(WORLD+18);
-    if (Math.hypot(x, z) < 14) continue;
+    if (Math.hypot(x, z) < 14 || !isUrbanDecorClear(x, z, 3.4)) continue;
     nRock++;
     const rsx = 0.6+Math.random()*1.7, rsz = 0.6+Math.random()*1.7;
     rockItems.push({
@@ -782,6 +977,7 @@ function resolveWorldCollisions() {
   const shroomItems = [];
   for (let i = 0; i < 380; i++) {
     const x = (Math.random()*2-1)*WORLD, z = (Math.random()*2-1)*WORLD;
+    if (!isUrbanDecorClear(x, z, 1.4)) continue;
     shroomItems.push({ x, y: terrainH(x, z), z, ry: Math.random()*6.3, sx: 0.7 + Math.random()*1.0, color: shroomCols[Math.floor(Math.random()*4)] });
   }
   scatterRegional(shroomGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), shroomItems);
@@ -1384,10 +1580,14 @@ function spawnEnemy(type, posOverride) {
   let x, z;
   if (posOverride) { x = posOverride.x; z = posOverride.z; }
   else {
-    const a = Math.random()*Math.PI*2;
-    const d = 34 + Math.random()*12;
-    x = THREE.MathUtils.clamp(P.pos.x + Math.cos(a)*d, -WORLD, WORLD);
-    z = THREE.MathUtils.clamp(P.pos.z + Math.sin(a)*d, -WORLD, WORLD);
+    let tries = 0;
+    do {
+      const a = Math.random()*Math.PI*2;
+      const d = 34 + Math.random()*12;
+      x = THREE.MathUtils.clamp(P.pos.x + Math.cos(a)*d, -WORLD, WORLD);
+      z = THREE.MathUtils.clamp(P.pos.z + Math.sin(a)*d, -WORLD, WORLD);
+      tries++;
+    } while (tries < 12 && isBuildingZone(x, z, 2));
   }
   const gy = terrainH(x, z);
   mesh.position.set(x, gy, z);
@@ -1625,6 +1825,7 @@ function spawnPot() {
     z = THREE.MathUtils.clamp(P.pos.z + Math.sin(a) * d, -WORLD + 6, WORLD - 6);
     tries++;
   } while (tries < 25 && (Math.hypot(x - P.pos.x, z - P.pos.z) < 22 ||
+           isBuildingZone(x, z, 2) || isStreetZone(x, z, 1.2) ||
            pots.some(p => Math.hypot(p.m.position.x - x, p.m.position.z - z) < 14)));
   const m = new THREE.Mesh(potGeo, potMat);
   m.position.set(x, terrainH(x, z), z);
@@ -2727,7 +2928,7 @@ document.getElementById('resetSave').onclick = () => {
 refreshMenuCoins();
 
 // console handle for tinkering: NB.gainXP(50), NB.spawnEnemy('boss'), ...
-window.NB = { G, P, save, META, gainXP, spawnEnemy, composer, renderer, terrainH, pots, breakPotsNear, spawnPot, persistSave, Music, syncOrbs, colliders, touchInput, setCamDist, hasMapGemMagnet, get camDist(){ return camDist; }, tick: (now) => tick(now) };
+window.NB = { G, P, save, META, gainXP, spawnEnemy, composer, renderer, terrainH, pots, breakPotsNear, spawnPot, persistSave, Music, syncOrbs, colliders, streetZones, buildingZones, get mapLaunchLogoCount(){ return mapLaunchLogoCount; }, touchInput, setCamDist, hasMapGemMagnet, get camDist(){ return camDist; }, tick: (now) => tick(now) };
 
 /* ============================================================
    MAIN LOOP
