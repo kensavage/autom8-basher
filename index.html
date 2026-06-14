@@ -2570,6 +2570,9 @@ function renderShop() {
     grid.appendChild(div);
   }
 }
+function maxAllMetaUpgrades() {
+  for (const meta of META) save.upgrades[meta.id] = meta.max;
+}
 function checkSecretCoins(e) {
   const shop = document.getElementById('shopScr');
   if (!shop || shop.style.display !== 'flex') { secretBuffer = ''; return; }
@@ -2578,6 +2581,7 @@ function checkSecretCoins(e) {
   if (secretBuffer !== 'secret') return;
   secretBuffer = '';
   save.coins += 1000000;
+  maxAllMetaUpgrades();
   persistSave();
   renderShop();
   refreshMenuCoins();
