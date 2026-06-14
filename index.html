@@ -450,7 +450,7 @@ const META = [
   { id:'regen',   emoji:'🌿', name:'Recovery',  desc:'+0.15 HP/s regen per level',  max:8,  base:40 },
   { id:'stamina', emoji:'⚡', name:'Endurance', desc:'+12 max stamina per level',   max:8,  base:30 },
   { id:'gold',    emoji:'💰', name:'Spoils',    desc:'+10% gold found per level',   max:8,  base:45 },
-  { id:'magnet',  emoji:'🧲', name:'Magnetism', desc:'+8% pickup radius per level', max:8,  base:30 },
+  { id:'magnet',  emoji:'🧲', name:'Magnetism', desc:'+8% pickup radius per level. Final level pulls XP gems from anywhere.', max:8,  base:30 },
   { id:'xp',      emoji:'📘', name:'Scrollcraft',desc:'+6% XP gained per level',    max:8,  base:50 },
 ];
 const save = (() => {
@@ -1545,11 +1545,18 @@ const vacMat = new THREE.MeshBasicMaterial({ color: 0xffd23e });
 function dropVacuum(pos) {
   pushPickup('vacuum', 0, new THREE.Mesh(vacGeo, vacMat), pos.x, pos.z);
 }
+const MAP_GEM_MAGNET_LEVEL = 8;
+function hasMapGemMagnet() {
+  const metaMagnetMax = META.find(m => m.id === 'magnet')?.max || MAP_GEM_MAGNET_LEVEL;
+  return (P.passives?.magnet || 0) >= MAP_GEM_MAGNET_LEVEL || (save.upgrades?.magnet || 0) >= metaMagnetMax;
+}
 
 function updateGems(dt) {
+  const mapGemMagnet = hasMapGemMagnet();
   for (let i = gems.length - 1; i >= 0; i--) {
     const g = gems[i];
     const d = Math.hypot(g.m.position.x - P.pos.x, g.m.position.z - P.pos.z);
+    if (!g.fly && mapGemMagnet && g.kind === 'xp') g.fly = true;
     if (!g.fly && d > 70) continue; // far gems sit still in the fog — skip cosmetic updates
     g.m.rotation.y += dt * 3;
     if (!g.fly) g.m.position.y = g.baseY + Math.sin(G.t*4 + i)*0.12;
@@ -2029,6 +2036,12 @@ function grantSecretRunUpgrades() {
   P.hp = P.maxhp;
   P.stamina = P.staminaMax;
 }
+function passiveDesc(ps, owned = 0) {
+  if (ps.id !== 'magnet') return ps.desc;
+  if (owned >= MAP_GEM_MAGNET_LEVEL) return 'Map-wide XP gem vacuum active';
+  if (owned === MAP_GEM_MAGNET_LEVEL - 1) return 'FINAL: XP gems fly to you from anywhere';
+  return ps.desc;
+}
 
 function rollCards() {
   const opts = [];
@@ -2038,7 +2051,10 @@ function rollCards() {
     if (!cur && Object.keys(P.weapons).length >= 4) continue; // max 4 weapons
     opts.push({ kind:'weapon', id, lvl: cur + 1 });
   }
-  for (const ps of PASSIVES) opts.push({ kind:'passive', ps });
+  for (const ps of PASSIVES) {
+    if (ps.id === 'magnet' && (P.passives.magnet || 0) >= MAP_GEM_MAGNET_LEVEL) continue;
+    opts.push({ kind:'passive', ps });
+  }
   const picks = [];
   while (picks.length < 3 && opts.length) {
     const i = Math.floor(Math.random() * opts.length);
@@ -2066,7 +2082,7 @@ function showLevelup() {
     } else {
       const owned = P.passives[c.ps.id] || 0;
       div.innerHTML = `<div class="upEmoji">${c.ps.emoji}</div><div class="upName">${c.ps.name}</div>
-        <div class="upLvl">${owned ? 'owned ×' + owned : '&nbsp;'}</div><div class="upDesc">${c.ps.desc}</div><div class="upTag">PASSIVE</div>`;
+        <div class="upLvl">${owned ? 'owned ×' + owned : '&nbsp;'}</div><div class="upDesc">${passiveDesc(c.ps, owned)}</div><div class="upTag">PASSIVE</div>`;
       div.onclick = () => { c.ps.apply(); P.passives[c.ps.id] = owned + 1; pickCard(); };
     }
     row.appendChild(div);
@@ -2099,7 +2115,7 @@ function refreshWeaponTray() {
       const chip = document.createElement('div');
       chip.className = 'pchip';
       chip.textContent = ps.emoji + (P.passives[id] > 1 ? '×' + P.passives[id] : '');
-      chip.title = ps.name + ' — ' + ps.desc;
+      chip.title = ps.name + ' — ' + passiveDesc(ps, P.passives[id]);
       row.appendChild(chip);
     }
     tray.appendChild(row);
@@ -2678,7 +2694,7 @@ document.getElementById('resetSave').onclick = () => {
 refreshMenuCoins();
 
 // console handle for tinkering: NB.gainXP(50), NB.spawnEnemy('boss'), ...
-window.NB = { G, P, save, META, gainXP, spawnEnemy, composer, renderer, terrainH, pots, breakPotsNear, spawnPot, persistSave, Music, syncOrbs, colliders, touchInput, setCamDist, get camDist(){ return camDist; }, tick: (now) => tick(now) };
+window.NB = { G, P, save, META, gainXP, spawnEnemy, composer, renderer, terrainH, pots, breakPotsNear, spawnPot, persistSave, Music, syncOrbs, colliders, touchInput, setCamDist, hasMapGemMagnet, get camDist(){ return camDist; }, tick: (now) => tick(now) };
 
 /* ============================================================
    MAIN LOOP
