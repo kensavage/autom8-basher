@@ -596,6 +596,8 @@ function addCollider(x, z, r) {
 const streetZones = [];
 const buildingZones = [];
 let mapLaunchLogoCount = 0;
+const mapBillboardCounts = { launchclub: 0, autom8: 0, jobmate: 0 };
+const mapBillboards = [];
 function isStreetZone(x, z, pad = 0) {
   return streetZones.some(s => s.axis === 'x'
     ? Math.abs(z - s.coord) <= s.width / 2 + pad && x >= s.start - pad && x <= s.end + pad
@@ -862,23 +864,61 @@ function resolveWorldCollisions() {
   scatterRegional(roofGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, flatShading: true }), buildingRoofs, { shadows: true });
   scatterRegional(windowGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), windowItems);
 
-  const MAX_MAP_LOGOS = 3;
-  const logoTex = new THREE.TextureLoader().load('assets/launchclub-white-text-green-logo.png');
-  logoTex.colorSpace = THREE.SRGBColorSpace;
-  logoTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  const billboardPanelMat = new THREE.MeshStandardMaterial({ color: 0x050808, roughness: 0.58, metalness: 0.18 });
-  const billboardLogoMat = new THREE.MeshBasicMaterial({ map: logoTex, transparent: true, side: THREE.DoubleSide, depthWrite: false });
-  const billboardTrimMat = new THREE.MeshBasicMaterial({ color: 0x02e95b, side: THREE.DoubleSide });
-  function addLaunchBillboard(b) {
+  const MAX_BILLBOARDS_PER_BRAND = 3;
+  const loadBillboardTexture = src => {
+    const tex = new THREE.TextureLoader().load(src);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    return tex;
+  };
+  const billboardBrands = [
+    {
+      id: 'launchclub',
+      src: 'assets/launchclub-white-text-green-logo.png',
+      aspect: 1400 / 222,
+      panel: 0x050808,
+      trim: 0x02e95b,
+      logoScale: 0.84,
+    },
+    {
+      id: 'autom8',
+      src: 'assets/autom8-billboard-logo.png',
+      aspect: 1380 / 386,
+      panel: 0xffffff,
+      trim: 0x59dcea,
+      logoScale: 0.9,
+    },
+    {
+      id: 'jobmate',
+      src: 'assets/jobmate-billboard-logo.png',
+      aspect: 1380 / 436,
+      panel: 0xffffff,
+      trim: 0x2a90c9,
+      logoScale: 0.88,
+    },
+  ].map(brand => {
+    const texture = loadBillboardTexture(brand.src);
+    return {
+      ...brand,
+      panelMat: new THREE.MeshStandardMaterial({ color: brand.panel, roughness: 0.58, metalness: brand.panel === 0xffffff ? 0.02 : 0.18 }),
+      logoMat: new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, depthWrite: false }),
+      trimMat: new THREE.MeshBasicMaterial({ color: brand.trim, side: THREE.DoubleSide }),
+    };
+  });
+  function addBrandBillboard(b, brand) {
     const group = new THREE.Group();
     const panelW = Math.max(5.8, Math.min(9.8, b.faceSpan * 0.82));
     const panelH = 2.25;
-    const logoW = panelW * 0.84;
-    const logoH = logoW * (222 / 1400);
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(panelW, panelH), billboardPanelMat);
-    const logo = new THREE.Mesh(new THREE.PlaneGeometry(logoW, logoH), billboardLogoMat);
-    const topTrim = new THREE.Mesh(new THREE.PlaneGeometry(panelW, 0.07), billboardTrimMat);
-    const bottomTrim = new THREE.Mesh(new THREE.PlaneGeometry(panelW, 0.07), billboardTrimMat);
+    let logoW = panelW * brand.logoScale;
+    let logoH = logoW / brand.aspect;
+    if (logoH > panelH * 0.74) {
+      logoH = panelH * 0.74;
+      logoW = logoH * brand.aspect;
+    }
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(panelW, panelH), brand.panelMat);
+    const logo = new THREE.Mesh(new THREE.PlaneGeometry(logoW, logoH), brand.logoMat);
+    const topTrim = new THREE.Mesh(new THREE.PlaneGeometry(panelW, 0.07), brand.trimMat);
+    const bottomTrim = new THREE.Mesh(new THREE.PlaneGeometry(panelW, 0.07), brand.trimMat);
     logo.position.z = 0.035;
     topTrim.position.set(0, panelH / 2 - 0.12, 0.04);
     bottomTrim.position.set(0, -panelH / 2 + 0.12, 0.04);
@@ -887,13 +927,21 @@ function resolveWorldCollisions() {
     group.position.set(b.x + nx * (b.w / 2 + 0.11), b.gy + Math.min(b.h - 1.15, Math.max(3.25, b.h * 0.62)), b.z + nz * (b.d / 2 + 0.11));
     group.rotation.y = b.faceRotY;
     scene.add(group);
+    mapBillboardCounts[brand.id]++;
+    mapBillboards.push({ brand: brand.id, x: group.position.x, z: group.position.z, normalX: nx, normalZ: nz });
   }
   const billboardCandidates = buildings
     .filter(b => b.h > 7 && b.faceSpan > 6.4)
     .sort(() => Math.random() - 0.5)
-    .slice(0, MAX_MAP_LOGOS);
-  mapLaunchLogoCount = billboardCandidates.length;
-  billboardCandidates.forEach(addLaunchBillboard);
+    .slice(0, billboardBrands.length * MAX_BILLBOARDS_PER_BRAND);
+  let billboardIndex = 0;
+  for (let round = 0; round < MAX_BILLBOARDS_PER_BRAND; round++) {
+    for (const brand of billboardBrands) {
+      const b = billboardCandidates[billboardIndex++];
+      if (b) addBrandBillboard(b, brand);
+    }
+  }
+  mapLaunchLogoCount = mapBillboardCounts.launchclub;
 
   const grassItems = [];
   for (let i = 0; i < 6000; i++) {
@@ -2928,7 +2976,7 @@ document.getElementById('resetSave').onclick = () => {
 refreshMenuCoins();
 
 // console handle for tinkering: NB.gainXP(50), NB.spawnEnemy('boss'), ...
-window.NB = { G, P, save, META, gainXP, spawnEnemy, composer, renderer, terrainH, pots, breakPotsNear, spawnPot, persistSave, Music, syncOrbs, colliders, streetZones, buildingZones, get mapLaunchLogoCount(){ return mapLaunchLogoCount; }, touchInput, setCamDist, hasMapGemMagnet, get camDist(){ return camDist; }, tick: (now) => tick(now) };
+window.NB = { G, P, save, META, gainXP, spawnEnemy, composer, renderer, terrainH, pots, breakPotsNear, spawnPot, persistSave, Music, syncOrbs, colliders, streetZones, buildingZones, mapBillboardCounts, mapBillboards, get mapLaunchLogoCount(){ return mapLaunchLogoCount; }, touchInput, setCamDist, setCamera(yaw, pitch = camPitch, dist = camDist){ camYaw = yaw; camPitch = THREE.MathUtils.clamp(pitch, 0.32, 1.25); setCamDist(dist); }, hasMapGemMagnet, get camDist(){ return camDist; }, tick: (now) => tick(now) };
 
 /* ============================================================
    MAIN LOOP
