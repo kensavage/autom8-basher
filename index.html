@@ -425,6 +425,7 @@ const save = (() => {
   try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) {}
   if (!s || typeof s !== 'object') s = {};
   s.coins = s.coins || 0;
+  s.secretEverything = !!s.secretEverything;
   s.upgrades = s.upgrades || {};
   for (const m of META) s.upgrades[m.id] = s.upgrades[m.id] || 0;
   return s;
@@ -1984,6 +1985,17 @@ const PASSIVES = [
   { id:'lungs',  emoji:'🫁', name:'Deep Breath',  desc:'+30 max stamina',          apply(){ P.staminaMax += 30; P.stamina += 30; } },
   { id:'wind',   emoji:'🌬️', name:'Second Wind',  desc:'+35% stamina regen',       apply(){ P.staminaRegen *= 1.35; } },
 ];
+const SECRET_PASSIVE_STACKS = 8;
+
+function grantSecretRunUpgrades() {
+  for (const id in WEAPONS) P.weapons[id] = WEAPONS[id].max;
+  for (const ps of PASSIVES) {
+    P.passives[ps.id] = SECRET_PASSIVE_STACKS;
+    for (let i = 0; i < SECRET_PASSIVE_STACKS; i++) ps.apply();
+  }
+  P.hp = P.maxhp;
+  P.stamina = P.staminaMax;
+}
 
 function rollCards() {
   const opts = [];
@@ -2453,7 +2465,9 @@ function resetGame() {
   P.armor = 0; P.regen = mu.regen * 0.15; P.crit = 0.05; P.speedMult = 1 + mu.speed * 0.03;
   P.staminaMax = 100 + mu.stamina * 12; P.stamina = P.staminaMax; P.staminaRegen = 18;
   P.sprintMult = 1.65; P.winded = false; P.sprinting = false; P.dustT = 0; P.oobT = 0;
-  P.weapons = {}; P.weapons[ch.weapon] = 1; P.passives = {};
+  P.weapons = {}; P.passives = {};
+  if (save.secretEverything) grantSecretRunUpgrades();
+  else P.weapons[ch.weapon] = 1;
   for (const id in WEAPONS) WEAPONS[id].timer = 0;
   syncOrbs();
 
@@ -2573,6 +2587,10 @@ function renderShop() {
 function maxAllMetaUpgrades() {
   for (const meta of META) save.upgrades[meta.id] = meta.max;
 }
+function enableEverythingCheat() {
+  save.secretEverything = true;
+  maxAllMetaUpgrades();
+}
 function checkSecretCoins(e) {
   const shop = document.getElementById('shopScr');
   if (!shop || shop.style.display !== 'flex') { secretBuffer = ''; return; }
@@ -2581,7 +2599,7 @@ function checkSecretCoins(e) {
   if (secretBuffer !== 'secret') return;
   secretBuffer = '';
   save.coins += 1000000;
-  maxAllMetaUpgrades();
+  enableEverythingCheat();
   persistSave();
   renderShop();
   refreshMenuCoins();
@@ -2605,6 +2623,7 @@ document.getElementById('shopBack').onclick = () => {
 document.getElementById('resetSave').onclick = () => {
   if (!confirm('Reset ALL progress (coins + upgrades)?')) return;
   save.coins = 0;
+  save.secretEverything = false;
   for (const m of META) save.upgrades[m.id] = 0;
   persistSave();
   renderShop();
