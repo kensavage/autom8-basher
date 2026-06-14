@@ -321,7 +321,7 @@
 	    <div class="endStats" id="deadStats"></div>
 	    <div class="btnRow">
 	      <button class="bigBtn" id="retryBtn">TRY AGAIN</button>
-	      <button class="bigBtn secondary" id="deadShareBtn">SHARE GAME</button>
+	      <button class="bigBtn secondary" id="deadShareBtn">SHARE RUN</button>
 	      <button class="bigBtn secondary" id="deadShopBtn">UPGRADES</button>
 	    </div>
 	  </div>
@@ -331,7 +331,7 @@
 	    <div class="endStats" id="winStats"></div>
 	    <div class="btnRow">
 	      <button class="bigBtn" id="winBtn">ONE MORE RUN</button>
-	      <button class="bigBtn secondary" id="winShareBtn">SHARE GAME</button>
+	      <button class="bigBtn secondary" id="winShareBtn">SHARE RUN</button>
 	      <button class="bigBtn secondary" id="winShopBtn">UPGRADES</button>
 	    </div>
 	  </div>
@@ -348,7 +348,7 @@
 	    <div class="endTitle">PAUSED</div>
 	    <div class="endStats">press P to resume</div>
 	  </div>
-	  <div class="shareToast" id="shareToast">Game link copied</div>
+	  <div class="shareToast" id="shareToast">Run copied</div>
 	</div>
 
 <script type="importmap">
@@ -3393,11 +3393,12 @@ function runScore(won) {
 	}
 
 	const GAME_SHARE_URL = 'https://3dninja.netlify.app/';
-	function runShareText() {
-	  return GAME_SHARE_URL;
+	function runShareText(run = G.lastRun) {
+	  if (!run) return `Play Ninja Basher by LaunchClub.ai: ${GAME_SHARE_URL}`;
+	  return `I scored ${run.score} in Ninja Basher by LaunchClub.ai on ${DIFFICULTIES[run.difficulty || 'normal'].label} — survived ${fmtTime(run.time)}, reached level ${run.level}, defeated ${run.kills} soldiers, beat ${run.bossKills} boss${run.bossKills === 1 ? '' : 'es'}, evolved ${run.evolved} weapon${run.evolved === 1 ? '' : 's'}, and grabbed ${run.relics || 0} relic${run.relics === 1 ? '' : 's'}. Play: ${GAME_SHARE_URL}`;
 	}
 
-	function showShareToast(text = 'Game link copied') {
+	function showShareToast(text = 'Run copied') {
 	  const toast = document.getElementById('shareToast');
 	  toast.textContent = text;
 	  toast.classList.add('show');
@@ -3472,16 +3473,16 @@ function runScore(won) {
 	}
 
 	async function shareRun() {
-	  const link = runShareText();
+	  const text = runShareText();
 	  try {
-	    if (navigator.share) await navigator.share({ title: 'Ninja Basher', url: link });
-	    else if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(link);
+	    if (navigator.share) await navigator.share({ title: 'Ninja Basher run', text });
+	    else if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
 	    else throw new Error('clipboard unavailable');
-	    showShareToast(navigator.share ? 'Game link shared' : 'Game link copied');
+	    showShareToast(navigator.share ? 'Run shared' : 'Run copied');
 	  } catch (err) {
 	    if (navigator.clipboard?.writeText) {
-	      await navigator.clipboard.writeText(link);
-	      showShareToast('Game link copied');
+	      await navigator.clipboard.writeText(text);
+	      showShareToast('Run copied');
 	    } else showShareToast('Share unavailable');
 	  }
 	}
