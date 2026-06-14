@@ -2492,6 +2492,19 @@ function startGame() {
   document.getElementById('hud').style.display = 'block';
   G.state = 'play';
 }
+function showStartScreen() {
+  Music.stop();
+  G.state = 'menu';
+  document.getElementById('hud').style.display = 'none';
+  document.getElementById('levelup').style.display = 'none';
+  document.getElementById('deadScr').style.display = 'none';
+  document.getElementById('winScr').style.display = 'none';
+  document.getElementById('shopScr').style.display = 'none';
+  document.getElementById('pauseScr').style.display = 'none';
+  document.getElementById('menu').style.display = 'flex';
+  refreshMenuCoins();
+  Sfx.pick();
+}
 
 function fmtTime(t) {
   const m = Math.floor(t/60), s = Math.floor(t%60);
@@ -2546,8 +2559,8 @@ function gameOver(won) {
     row.appendChild(d);
   });
   document.getElementById('startBtn').onclick = startGame;
-  document.getElementById('retryBtn').onclick = startGame;
-  document.getElementById('winBtn').onclick = startGame;
+  document.getElementById('retryBtn').onclick = showStartScreen;
+  document.getElementById('winBtn').onclick = showStartScreen;
 }
 
 /* ============================================================
