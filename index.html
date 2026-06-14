@@ -459,6 +459,7 @@ const save = (() => {
   if (!s || typeof s !== 'object') s = {};
   s.coins = s.coins || 0;
   s.secretEverything = !!s.secretEverything;
+  s.secretAutoLevelLowest = !!s.secretAutoLevelLowest || s.secretEverything;
   s.upgrades = s.upgrades || {};
   for (const m of META) s.upgrades[m.id] = s.upgrades[m.id] || 0;
   return s;
@@ -2042,6 +2043,20 @@ function passiveDesc(ps, owned = 0) {
   if (owned === MAP_GEM_MAGNET_LEVEL - 1) return 'FINAL: XP gems fly to you from anywhere';
   return ps.desc;
 }
+function levelupChoiceCurrentLevel(c) {
+  return c.kind === 'weapon' ? c.lvl - 1 : (P.passives[c.ps.id] || 0);
+}
+function applyLevelupChoice(c) {
+  if (c.kind === 'weapon') {
+    P.weapons[c.id] = c.lvl;
+    syncOrbs();
+  } else {
+    const owned = P.passives[c.ps.id] || 0;
+    c.ps.apply();
+    P.passives[c.ps.id] = owned + 1;
+  }
+  pickCard();
+}
 
 function rollCards() {
   const opts = [];
@@ -2063,14 +2078,17 @@ function rollCards() {
   return picks;
 }
 
+let levelupAutoToken = 0;
 function showLevelup() {
+  levelupAutoToken++;
   G.state = 'levelup';
   for (const s of dmgPool) { s.life = 0; s.el.style.display = 'none'; } // don't leave numbers frozen over the menu
   document.getElementById('levelup').style.display = 'flex';
   document.getElementById('lvluptitle').textContent = G.pendingLevelups > 1 ? `LEVEL UP! (x${G.pendingLevelups})` : 'LEVEL UP!';
   const row = document.getElementById('cardRow');
   row.innerHTML = '';
-  for (const c of rollCards()) {
+  const cards = rollCards();
+  for (const c of cards) {
     const div = document.createElement('div');
     div.className = 'upCard';
     if (c.kind === 'weapon') {
@@ -2078,14 +2096,21 @@ function showLevelup() {
       div.innerHTML = `<div class="upEmoji">${w.emoji}</div><div class="upName">${w.name}</div>
         <div class="upLvl">${c.lvl === 1 ? 'NEW!' : 'LV ' + (c.lvl-1) + ' → ' + c.lvl}</div>
         <div class="upDesc">${w.desc(c.lvl)}</div><div class="upTag">WEAPON</div>`;
-      div.onclick = () => { P.weapons[c.id] = c.lvl; syncOrbs(); pickCard(); };
+      div.onclick = () => applyLevelupChoice(c);
     } else {
       const owned = P.passives[c.ps.id] || 0;
       div.innerHTML = `<div class="upEmoji">${c.ps.emoji}</div><div class="upName">${c.ps.name}</div>
         <div class="upLvl">${owned ? 'owned ×' + owned : '&nbsp;'}</div><div class="upDesc">${passiveDesc(c.ps, owned)}</div><div class="upTag">PASSIVE</div>`;
-      div.onclick = () => { c.ps.apply(); P.passives[c.ps.id] = owned + 1; pickCard(); };
+      div.onclick = () => applyLevelupChoice(c);
     }
     row.appendChild(div);
+  }
+  if (save.secretAutoLevelLowest && cards.length) {
+    const token = levelupAutoToken;
+    const best = cards.reduce((low, c) => levelupChoiceCurrentLevel(c) < levelupChoiceCurrentLevel(low) ? c : low);
+    setTimeout(() => {
+      if (token === levelupAutoToken && G.state === 'levelup' && G.pendingLevelups > 0) applyLevelupChoice(best);
+    }, 160);
   }
 }
 function pickCard() {
@@ -2651,6 +2676,7 @@ function maxAllMetaUpgrades() {
 }
 function enableEverythingCheat() {
   save.secretEverything = true;
+  save.secretAutoLevelLowest = true;
   maxAllMetaUpgrades();
 }
 function checkSecretCoins(e) {
@@ -2686,6 +2712,7 @@ document.getElementById('resetSave').onclick = () => {
   if (!confirm('Reset ALL progress (coins + upgrades)?')) return;
   save.coins = 0;
   save.secretEverything = false;
+  save.secretAutoLevelLowest = false;
   for (const m of META) save.upgrades[m.id] = 0;
   persistSave();
   renderShop();
